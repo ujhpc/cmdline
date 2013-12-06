@@ -321,9 +321,10 @@ public:
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           bool serialize=false){
+           bool serialize=false,
+           bool hidden=false){
     if (options.count(name)) throw cmdline_error("multiple definition: "+name);
-    options[name]=new option_without_value(name, short_name, desc, serialize);
+    options[name]=new option_without_value(name, short_name, desc, serialize, hidden);
     ordered.push_back(options[name]);
   }
 
@@ -333,8 +334,9 @@ public:
            const std::string &desc="",
            bool need=true,
            const T def=T(),
-           bool serialize=true){
-    add(name, short_name, desc, need, def, default_reader<T>(), serialize);
+           bool serialize=true,
+           bool hidden=false){
+    add(name, short_name, desc, need, def, default_reader<T>(), serialize, hidden);
   }
 
   template <class T, class F>
@@ -344,9 +346,10 @@ public:
            bool need=true,
            const T def=T(),
            F reader=F(),
-           bool serialize=true){
+           bool serialize=true,
+           bool hidden=false){
     if (options.count(name)) throw cmdline_error("multiple definition: "+name);
-    options[name]=new option_with_value_with_reader<T, F>(name, short_name, need, def, desc, reader, serialize);
+    options[name]=new option_with_value_with_reader<T, F>(name, short_name, need, def, desc, reader, serialize, hidden);
     ordered.push_back(options[name]);
   }
 
@@ -583,6 +586,9 @@ public:
       max_width=std::max(max_width, ordered[i]->name().length());
     }
     for (size_t i=0; i<ordered.size(); i++){
+      if (ordered[i]->is_hidden())
+        continue;
+
       if (ordered[i]->short_name()){
         oss<<"  -"<<ordered[i]->short_name()<<", ";
       }
@@ -662,6 +668,7 @@ private:
     virtual bool has_set() const=0;
     virtual bool valid() const=0;
     virtual bool must() const=0;
+    virtual bool is_hidden() const=0;
 
     virtual const std::string &name() const=0;
     virtual char short_name() const=0;
@@ -675,8 +682,10 @@ private:
     option_without_value(const std::string &name,
                          char short_name,
                          const std::string &desc,
-                         bool serialize)
-      :nam(name), snam(short_name), desc(desc), has(false), serialize(serialize){
+                         bool serialize,
+                         bool hidden)
+      :nam(name), snam(short_name), desc(desc), has(false)
+      , serialize(serialize), hidden(hidden){
     }
     ~option_without_value(){}
 
@@ -701,6 +710,10 @@ private:
 
     bool must() const{
       return false;
+    }
+
+    bool is_hidden() const{
+      return hidden;
     }
 
     const std::string &name() const{
@@ -731,6 +744,7 @@ private:
     std::string desc;
     bool has;
     bool serialize;
+    bool hidden;
   };
 
   template <class T>
@@ -741,9 +755,10 @@ private:
                       bool need,
                       const T &def,
                       const std::string &desc,
-                      bool serialize)
+                      bool serialize,
+                      bool hidden)
       : nam(name), snam(short_name), need(need), has(false)
-      , def(def), actual(def), serialize(serialize) {
+      , def(def), actual(def), serialize(serialize), hidden(hidden) {
       this->desc=full_description(desc);
     }
     ~option_with_value(){}
@@ -784,6 +799,10 @@ private:
 
     bool must() const{
       return need;
+    }
+
+    bool is_hidden() const{
+      return hidden;
     }
 
     const std::string &name() const{
@@ -827,6 +846,7 @@ private:
     T def;
     T actual;
     bool serialize;
+    bool hidden;
   };
 
   template <class T, class F>
@@ -838,8 +858,9 @@ private:
                                   const T def,
                                   const std::string &desc,
                                   F reader,
-                                  bool serialize)
-      : option_with_value<T>(name, short_name, need, def, desc, serialize), reader(reader){
+                                  bool serialize,
+                                  bool hidden)
+      : option_with_value<T>(name, short_name, need, def, desc, serialize, hidden), reader(reader){
     }
 
   private:
