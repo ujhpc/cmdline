@@ -134,10 +134,34 @@ inline std::string readable_typename<std::string>()
 
 //-----
 
-class cmdline_error : public std::exception {
+class exception : public std::exception {
 public:
-  cmdline_error(const std::string &msg): msg(msg){}
-  ~cmdline_error() throw() {}
+  exception(const std::vector<std::string> &errors,
+            const std::string &usage,
+            const std::string &name,
+            bool help=false)
+            :errors_(errors), usage_(usage), name_(name), help_(help){}
+  ~exception() throw() {}
+  const char *what() const throw() { return errors_.begin()->c_str(); }
+  const char *usage() const throw() {
+    return usage_.length()?usage_.c_str():NULL;
+  }
+  const char *name() const throw() {
+    return name_.length()?name_.c_str():NULL;
+  }
+  bool help() const throw() { return help_; };
+  const std::vector<std::string> &errors() const throw() { return errors_; }
+private:
+  std::vector<std::string> errors_;
+  std::string usage_;
+  std::string name_;
+  bool help_;
+};
+
+class parse_error : public std::exception {
+public:
+  parse_error(const std::string &msg): msg(msg){}
+  ~parse_error() throw() {}
   const char *what() const throw() { return msg.c_str(); }
 private:
   std::string msg;
@@ -155,7 +179,7 @@ struct range_reader{
   range_reader(const T &low, const T &high): low(low), high(high) {}
   T operator()(const std::string &s) const {
     T ret=default_reader<T>()(s);
-    if (!(ret>=low && ret<=high)) throw cmdline::cmdline_error("range_error");
+    if (!(ret>=low && ret<=high)) throw cmdline::parse_error("range_error");
     return ret;
   }
 private:
@@ -173,7 +197,7 @@ struct oneof_reader{
   T operator()(const std::string &s){
     T ret=default_reader<T>()(s);
     if (std::find(alt.begin(), alt.end(), ret)==alt.end())
-      throw cmdline_error("");
+      throw parse_error("");
     return ret;
   }
   void add(const T &v){ alt.push_back(v); }
@@ -323,7 +347,7 @@ public:
            const std::string &desc="",
            bool serialize=false,
            bool hidden=false){
-    if (options.count(name)) throw cmdline_error("multiple definition: "+name);
+    if (options.count(name)) throw parse_error("multiple definition: "+name);
     options[name]=new option_without_value(name, short_name, desc, serialize, hidden);
     ordered.push_back(options[name]);
   }
@@ -348,7 +372,7 @@ public:
            F reader=F(),
            bool serialize=true,
            bool hidden=false){
-    if (options.count(name)) throw cmdline_error("multiple definition: "+name);
+    if (options.count(name)) throw parse_error("multiple definition: "+name);
     options[name]=new option_with_value_with_reader<T, F>(name, short_name, need, def, desc, reader, serialize, hidden);
     ordered.push_back(options[name]);
   }
@@ -362,23 +386,23 @@ public:
   }
 
   bool exist(const std::string &name) const {
-    if (options.count(name)==0) throw cmdline_error("there is no flag: --"+name);
+    if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
     return options.find(name)->second->has_set();
   }
 
   template <class T>
   T &get(const std::string &name) {
-    if (options.count(name)==0) throw cmdline_error("there is no flag: --"+name);
+    if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
     option_with_value<T> *p=dynamic_cast<option_with_value<T>*>(options.find(name)->second);
-    if (p==NULL) throw cmdline_error("type mismatch flag '"+name+"'");
+    if (p==NULL) throw parse_error("type mismatch flag '"+name+"'");
     return p->get();
   }
 
   template <class T>
   const T &get(const std::string &name) const {
-    if (options.count(name)==0) throw cmdline_error("there is no flag: --"+name);
+    if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
     const option_with_value<T> *p=dynamic_cast<const option_with_value<T>*>(options.find(name)->second);
-    if (p==NULL) throw cmdline_error("type mismatch flag '"+name+"'");
+    if (p==NULL) throw parse_error("type mismatch flag '"+name+"'");
     return p->get();
   }
 
@@ -386,7 +410,7 @@ public:
     return others;
   }
 
-  bool parse(const std::string &arg){
+  bool parse(const std::string &arg, bool clear=true){
     std::vector<std::string> args;
 
     std::string buf;
@@ -425,7 +449,7 @@ public:
     for (size_t i=0; i<args.size(); i++)
       std::cout<<"\""<<args[i]<<"\""<<std::endl;
 
-    return parse(args);
+    return parse(args, clear);
   }
 
   bool parse(const std::vector<std::string> &args, bool clear=true){
@@ -436,6 +460,17 @@ public:
       argv[i]=args[i].c_str();
 
     return parse(argc, &argv[0], clear);
+  }
+
+  bool parse(std::istream &is, bool clear=true){
+    std::vector<std::string> args;
+    args.push_back(prog_name);
+    std::copy(
+      std::istream_iterator<std::string>(is),
+      std::istream_iterator<std::string>(),
+      std::back_inserter(args)
+    );
+    return parse(args, clear);
   }
 
   bool parse(int argc, const char * const argv[], bool clear=true){
@@ -542,21 +577,46 @@ public:
   }
 
   void parse_check(const std::string &arg){
-    if (!options.count("help"))
-      add("help", '?', "print this message");
+    add_help();
     check(0, parse(arg));
   }
 
   void parse_check(const std::vector<std::string> &args){
-    if (!options.count("help"))
-      add("help", '?', "print this message");
+    add_help();
     check(static_cast<int>(args.size()), parse(args));
   }
 
   void parse_check(int argc, char *argv[]){
-    if (!options.count("help"))
-      add("help", '?', "print this message");
+    add_help();
     check(argc, parse(argc, argv));
+  }
+
+  void try_parse(const std::string &arg,
+                 bool clear=true,
+                 const std::string &name=""){
+    add_help();
+    throw_unless(parse(arg, clear), name);
+  }
+
+  void try_parse(const std::vector<std::string> &args,
+                 bool clear=true,
+                 const std::string &name=""){
+    add_help();
+    throw_unless(parse(args, clear), name);
+  }
+
+  void try_parse(std::istream &in,
+                 bool clear=false,
+                 const std::string &name=""){
+    add_help();
+    throw_unless(parse(in, clear), name);
+  }
+
+  void try_parse(int argc, char *argv[],
+                 bool clear=true,
+                 const std::string &name=""){
+    add_help();
+    throw_unless(parse(argc, argv, clear), name);
   }
 
   std::string error() const{
@@ -611,18 +671,16 @@ public:
   }
 
   friend std::istream & operator >> (std::istream &is, parser &p) {
-    std::vector<std::string> args;
-    args.push_back(p.prog_name);
-    std::copy(
-      std::istream_iterator<std::string>(is),
-      std::istream_iterator<std::string>(),
-      std::back_inserter(args)
-    );
-    p.check(static_cast<int>(args.size()), p.parse(args, false));
+    p.try_parse(is);
     return is;
   }
 
 private:
+
+  void add_help(){
+    if (!options.count("help"))
+      add("help", '?', "print this message");
+  }
 
   void check(int argc, bool ok){
     if ((argc==1 && !ok) || exist("help")){
@@ -634,6 +692,12 @@ private:
       std::cerr<<error()<<std::endl<<usage();
       exit(1);
     }
+  }
+
+  void throw_unless(bool ok, const std::string &name=""){
+    bool help=exist("help");
+    if (!ok || help)
+      throw cmdline::exception(errors, usage(), name, help);
   }
 
   void set_option(const std::string &name){
