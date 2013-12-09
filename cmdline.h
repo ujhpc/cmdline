@@ -340,6 +340,15 @@ enum {
 };
 typedef int flags;
 
+class parser;
+
+template <class T>
+struct hook{
+  typedef bool (*type)(parser& parser,
+                       T &actual,
+                       const std::string &arg);
+};
+
 //-----
 
 class parser{
@@ -366,8 +375,9 @@ public:
            char short_name=0,
            const std::string &desc="",
            flags flags=required,
-           const T def=T()){
-    add(name, short_name, desc, flags, def, default_reader<T>());
+           const T def=T(),
+           typename hook<T>::type set_hook=NULL){
+    add(name, short_name, desc, flags, def, default_reader<T>(), set_hook);
   }
 
   template <class T, class F>
@@ -376,9 +386,11 @@ public:
            const std::string &desc="",
            flags flags=required,
            const T def=T(),
-           F reader=F()){
+           F reader=F(),
+           typename hook<T>::type set_hook=NULL){
     if (options.count(name)) throw parse_error("multiple definition: "+name);
-    options[name]=new option_with_value_with_reader<T, F>(name, short_name, flags, def, desc, reader);
+    options[name]=new option_with_value_with_reader<T, F>(name, short_name, flags, def,
+                                                          desc, reader, *this, set_hook);
     ordered.push_back(options[name]);
   }
 
@@ -820,9 +832,11 @@ private:
                       char short_name,
                       flags flags,
                       const T &def,
-                      const std::string &desc)
+                      const std::string &desc,
+                      parser &parser,
+                      typename hook<T>::type set_hook)
       : nam(name), snam(short_name), flags(flags), has(false)
-      , def(def), actual(def){
+      , def(def), actual(def), parser(parser), set_hook(set_hook){
       this->desc=full_description(desc);
     }
     ~option_with_value(){}
@@ -843,7 +857,11 @@ private:
 
     bool set(const std::string &value){
       try{
-        actual=read(value);
+        T read_value=read(value);
+        if (set_hook && !set_hook(parser, read_value, value)) {
+          return true;
+        }
+        actual=read_value;
         has=true;
       }
       catch(const std::exception &e){
@@ -857,7 +875,7 @@ private:
     }
 
     bool valid() const{
-      if (!must() && !has) return false;
+      if (must() && !has) return false;
       return true;
     }
 
@@ -909,6 +927,9 @@ private:
     bool has;
     T def;
     T actual;
+
+    parser &parser;
+    typename hook<T>::type set_hook;
   };
 
   template <class T, class F>
@@ -919,8 +940,11 @@ private:
                                   flags flags,
                                   const T def,
                                   const std::string &desc,
-                                  F reader)
-      : option_with_value<T>(name, short_name, flags, def, desc), reader(reader){
+                                  F reader,
+                                  parser &parser,
+                                  typename hook<T>::type set_hook)
+      : option_with_value<T>(name, short_name, flags, def, desc, parser, set_hook),
+        reader(reader){
     }
 
   private:
