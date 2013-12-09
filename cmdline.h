@@ -149,7 +149,7 @@ public:
   const char *name() const throw() {
     return name_.length()?name_.c_str():NULL;
   }
-  bool help() const throw() { return help_; };
+  bool help() const throw() { return help_; }
   const std::vector<std::string> &errors() const throw() { return errors_; }
 private:
   std::vector<std::string> errors_;
@@ -332,6 +332,16 @@ oneof_reader<T> oneof(T a1, T a2, T a3, T a4, T a5, T a6, T a7, T a8, T a9, T a1
 
 //-----
 
+enum {
+  optional = 0,
+  required = 1,
+  dontsave = 2,
+  hidden   = 4,
+};
+typedef int flags;
+
+//-----
+
 class parser{
 public:
   parser(){
@@ -345,10 +355,9 @@ public:
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           bool serialize=false,
-           bool hidden=false){
+           flags flags=optional|dontsave){
     if (options.count(name)) throw parse_error("multiple definition: "+name);
-    options[name]=new option_without_value(name, short_name, desc, serialize, hidden);
+    options[name]=new option_without_value(name, short_name, desc, flags);
     ordered.push_back(options[name]);
   }
 
@@ -356,24 +365,20 @@ public:
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           bool need=true,
-           const T def=T(),
-           bool serialize=true,
-           bool hidden=false){
-    add(name, short_name, desc, need, def, default_reader<T>(), serialize, hidden);
+           flags flags=required,
+           const T def=T()){
+    add(name, short_name, desc, flags, def, default_reader<T>());
   }
 
   template <class T, class F>
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           bool need=true,
+           flags flags=required,
            const T def=T(),
-           F reader=F(),
-           bool serialize=true,
-           bool hidden=false){
+           F reader=F()){
     if (options.count(name)) throw parse_error("multiple definition: "+name);
-    options[name]=new option_with_value_with_reader<T, F>(name, short_name, need, def, desc, reader, serialize, hidden);
+    options[name]=new option_with_value_with_reader<T, F>(name, short_name, flags, def, desc, reader);
     ordered.push_back(options[name]);
   }
 
@@ -646,7 +651,7 @@ public:
       max_width=std::max(max_width, ordered[i]->name().length());
     }
     for (size_t i=0; i<ordered.size(); i++){
-      if (ordered[i]->is_hidden())
+      if (ordered[i]->hidden())
         continue;
 
       if (ordered[i]->short_name()){
@@ -732,7 +737,7 @@ private:
     virtual bool has_set() const=0;
     virtual bool valid() const=0;
     virtual bool must() const=0;
-    virtual bool is_hidden() const=0;
+    virtual bool hidden() const=0;
 
     virtual const std::string &name() const=0;
     virtual char short_name() const=0;
@@ -746,10 +751,8 @@ private:
     option_without_value(const std::string &name,
                          char short_name,
                          const std::string &desc,
-                         bool serialize,
-                         bool hidden)
-      :nam(name), snam(short_name), desc(desc), has(false)
-      , serialize(serialize), hidden(hidden){
+                         flags flags)
+      :nam(name), snam(short_name), desc(desc), has(false), flags(flags){
     }
     ~option_without_value(){}
 
@@ -776,8 +779,8 @@ private:
       return false;
     }
 
-    bool is_hidden() const{
-      return hidden;
+    bool hidden() const{
+      return flags&cmdline::hidden;
     }
 
     const std::string &name() const{
@@ -797,7 +800,7 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (serialize)
+      if (!(flags&dontsave) && has)
         os<<"--"<<nam<<std::endl;
       return os;
     }
@@ -807,8 +810,7 @@ private:
     char snam;
     std::string desc;
     bool has;
-    bool serialize;
-    bool hidden;
+    flags flags;
   };
 
   template <class T>
@@ -816,13 +818,11 @@ private:
   public:
     option_with_value(const std::string &name,
                       char short_name,
-                      bool need,
+                      flags flags,
                       const T &def,
-                      const std::string &desc,
-                      bool serialize,
-                      bool hidden)
-      : nam(name), snam(short_name), need(need), has(false)
-      , def(def), actual(def), serialize(serialize), hidden(hidden) {
+                      const std::string &desc)
+      : nam(name), snam(short_name), flags(flags), has(false)
+      , def(def), actual(def){
       this->desc=full_description(desc);
     }
     ~option_with_value(){}
@@ -857,16 +857,16 @@ private:
     }
 
     bool valid() const{
-      if (need && !has) return false;
+      if (!must() && !has) return false;
       return true;
     }
 
     bool must() const{
-      return need;
+      return flags&required;
     }
 
-    bool is_hidden() const{
-      return hidden;
+    bool hidden() const{
+      return flags&cmdline::hidden;
     }
 
     const std::string &name() const{
@@ -886,7 +886,7 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (serialize)
+      if (!(flags&dontsave))
         os<<"--"<<nam<<"="<<actual<<std::endl;
       return os;
     }
@@ -895,7 +895,7 @@ private:
     std::string full_description(const std::string &desc){
       return
         desc+" ("+detail::readable_typename<T>()+
-        (need?"":" [="+detail::default_value<T>(def)+"]")
+        (must()?"":" [="+detail::default_value<T>(def)+"]")
         +")";
     }
 
@@ -903,14 +903,12 @@ private:
 
     std::string nam;
     char snam;
-    bool need;
+    flags flags;
     std::string desc;
 
     bool has;
     T def;
     T actual;
-    bool serialize;
-    bool hidden;
   };
 
   template <class T, class F>
@@ -918,13 +916,11 @@ private:
   public:
     option_with_value_with_reader(const std::string &name,
                                   char short_name,
-                                  bool need,
+                                  flags flags,
                                   const T def,
                                   const std::string &desc,
-                                  F reader,
-                                  bool serialize,
-                                  bool hidden)
-      : option_with_value<T>(name, short_name, need, def, desc, serialize, hidden), reader(reader){
+                                  F reader)
+      : option_with_value<T>(name, short_name, flags, def, desc), reader(reader){
     }
 
   private:
