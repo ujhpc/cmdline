@@ -364,7 +364,7 @@ public:
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           flags flags=optional|dontsave){
+           cmdline::flags flags=optional|dontsave){
     if (options.count(name)) throw parse_error("multiple definition: "+name);
     options[name]=new option_without_value(name, short_name, desc, flags);
     ordered.push_back(options[name]);
@@ -374,23 +374,23 @@ public:
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           flags flags=required,
+           cmdline::flags flags=required,
            const T def=T(),
-           typename hook<T>::type set_hook=NULL){
-    add(name, short_name, desc, flags, def, default_reader<T>(), set_hook);
+           typename cmdline::hook<T>::type hook=NULL){
+    add(name, short_name, desc, flags, def, default_reader<T>(), hook);
   }
 
   template <class T, class F>
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           flags flags=required,
+           cmdline::flags flags=required,
            const T def=T(),
            F reader=F(),
-           typename hook<T>::type set_hook=NULL){
+           typename cmdline::hook<T>::type hook=NULL){
     if (options.count(name)) throw parse_error("multiple definition: "+name);
     options[name]=new option_with_value_with_reader<T, F>(name, short_name, flags, def,
-                                                          desc, reader, *this, set_hook);
+                                                          desc, reader, *this, hook);
     ordered.push_back(options[name]);
   }
 
@@ -763,7 +763,7 @@ private:
     option_without_value(const std::string &name,
                          char short_name,
                          const std::string &desc,
-                         flags flags)
+                         cmdline::flags flags)
       :nam(name), snam(short_name), desc(desc), has(false), flags(flags){
     }
     ~option_without_value(){}
@@ -822,7 +822,7 @@ private:
     char snam;
     std::string desc;
     bool has;
-    flags flags;
+    cmdline::flags flags;
   };
 
   template <class T>
@@ -830,13 +830,13 @@ private:
   public:
     option_with_value(const std::string &name,
                       char short_name,
-                      flags flags,
+                      cmdline::flags flags,
                       const T &def,
                       const std::string &desc,
-                      parser &parser,
-                      typename hook<T>::type set_hook)
+                      cmdline::parser &parser,
+                      typename cmdline::hook<T>::type hook)
       : nam(name), snam(short_name), flags(flags), has(false)
-      , def(def), actual(def), parser(parser), set_hook(set_hook){
+      , def(def), actual(def), parser(parser), hook(hook){
       this->desc=full_description(desc);
     }
     ~option_with_value(){}
@@ -858,7 +858,7 @@ private:
     bool set(const std::string &value){
       try{
         T read_value=read(value);
-        if (set_hook && !set_hook(parser, read_value, value)) {
+        if (hook && !hook(parser, read_value, value)) {
           return true;
         }
         actual=read_value;
@@ -921,15 +921,15 @@ private:
 
     std::string nam;
     char snam;
-    flags flags;
+    cmdline::flags flags;
     std::string desc;
 
     bool has;
     T def;
     T actual;
 
-    parser &parser;
-    typename hook<T>::type set_hook;
+    cmdline::parser &parser;
+    typename cmdline::hook<T>::type hook;
   };
 
   template <class T, class F>
@@ -937,13 +937,13 @@ private:
   public:
     option_with_value_with_reader(const std::string &name,
                                   char short_name,
-                                  flags flags,
+                                  cmdline::flags flags,
                                   const T def,
                                   const std::string &desc,
                                   F reader,
-                                  parser &parser,
-                                  typename hook<T>::type set_hook)
-      : option_with_value<T>(name, short_name, flags, def, desc, parser, set_hook),
+                                  cmdline::parser &parser,
+                                  typename cmdline::hook<T>::type hook)
+      : option_with_value<T>(name, short_name, flags, def, desc, parser, hook),
         reader(reader){
     }
 
