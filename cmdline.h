@@ -36,7 +36,9 @@
 #include <typeinfo>
 #include <cstring>
 #include <algorithm>
+#if __GNUC__
 #include <cxxabi.h>
+#endif
 #include <cstdlib>
 #include <iterator>
 
@@ -105,11 +107,15 @@ Target lexical_cast(const Source &arg)
 
 static inline std::string demangle(const std::string &name)
 {
+#if __GNUC__
   int status=0;
   char *p=abi::__cxa_demangle(name.c_str(), 0, 0, &status);
   std::string ret(p);
   free(p);
   return ret;
+#else
+  return name;
+#endif
 }
 
 template <class T>
@@ -864,7 +870,7 @@ private:
         actual=read_value;
         has=true;
       }
-      catch(const std::exception &e){
+      catch(const std::exception &){
         return false;
       }
       return true;
