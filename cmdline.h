@@ -413,6 +413,11 @@ public:
     return options.find(name)->second->has_set();
   }
 
+  int count(const std::string &name) const {
+    if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
+    return options.find(name)->second->count();
+  }
+
   template <class T>
   T &get(const std::string &name) {
     if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
@@ -753,6 +758,7 @@ private:
     virtual bool set()=0;
     virtual bool set(const std::string &value)=0;
     virtual bool has_set() const=0;
+    virtual int count() const=0;
     virtual bool valid() const=0;
     virtual bool must() const=0;
     virtual bool hidden() const=0;
@@ -770,14 +776,14 @@ private:
                          char short_name,
                          const std::string &desc,
                          cmdline::flags flags)
-      :nam(name), snam(short_name), desc(desc), has(false), flags(flags){
+      :nam(name), snam(short_name), desc(desc), cnt(0), flags(flags){
     }
     ~option_without_value(){}
 
     bool has_value() const { return false; }
 
     bool set(){
-      has=true;
+      ++cnt;
       return true;
     }
 
@@ -786,7 +792,11 @@ private:
     }
 
     bool has_set() const {
-      return has;
+      return cnt>0;
+    }
+
+    int count() const {
+      return cnt;
     }
 
     bool valid() const{
@@ -818,7 +828,7 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (!(flags&dontsave) && has)
+      if (!(flags&dontsave) && cnt)
         os<<"--"<<nam<<std::endl;
       return os;
     }
@@ -827,7 +837,7 @@ private:
     std::string nam;
     char snam;
     std::string desc;
-    bool has;
+    int cnt;
     cmdline::flags flags;
   };
 
@@ -878,6 +888,10 @@ private:
 
     bool has_set() const{
       return has;
+    }
+
+    int count() const{
+      return has ? 1 : 0;
     }
 
     bool valid() const{
