@@ -494,11 +494,12 @@ public:
   bool parse(std::istream &is, bool clear=true){
     std::vector<std::string> args;
     args.push_back(prog_name);
-    std::copy(
-      std::istream_iterator<std::string>(is),
-      std::istream_iterator<std::string>(),
-      std::back_inserter(args)
-    );
+    std::string arg;
+    while (std::getline(is, arg)){
+      if (arg.length()>0 && arg[0]!='#'){
+        args.push_back(arg);
+      }
+    }
     return parse(args, clear);
   }
 
