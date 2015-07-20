@@ -692,13 +692,13 @@ public:
     return oss.str();
   }
 
-  friend std::ostream & operator << (std::ostream &os, parser &p) {
+  friend std::ostream & operator<<(std::ostream &os, parser &p) {
     for (size_t i=0; i<p.ordered.size(); i++)
       (*p.ordered[i])>>os;
     return os;
   }
 
-  friend std::istream & operator >> (std::istream &is, parser &p) {
+  friend std::istream & operator>>(std::istream &is, parser &p) {
     p.try_parse(is);
     return is;
   }
@@ -924,7 +924,7 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (!(flags&dontsave))
+      if (!(flags&dontsave) && (has || actual!=def))
         os<<"--"<<nam<<"="<<actual<<std::endl;
       return os;
     }
