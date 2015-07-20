@@ -339,10 +339,11 @@ oneof_reader<T> oneof(T a1, T a2, T a3, T a4, T a5, T a6, T a7, T a8, T a9, T a1
 //-----
 
 enum {
-  optional = 0,
-  required = 1,
-  dontsave = 2,
-  hidden   = 4,
+  optional   = 0,
+  required   = 1,
+  dontsave   = 2,
+  alwayssave = 4,
+  hidden     = 8,
 };
 typedef int flags;
 
@@ -924,7 +925,7 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (!(flags&dontsave) && (has || actual!=def))
+      if (!(flags&dontsave) && (!!(flags&alwayssave) || has || actual!=def))
         os<<"--"<<nam<<"="<<actual<<std::endl;
       return os;
     }
