@@ -482,16 +482,26 @@ public:
   }
 
   bool parse(const std::vector<std::string> &args, bool clear=true){
+    return parse(args, errors, clear);
+  }
+
+  bool parse(const std::vector<std::string> &args,
+             std::vector<std::string> &errors, bool clear=true){
     int argc=static_cast<int>(args.size());
     std::vector<const char*> argv(argc);
 
     for (int i=0; i<argc; i++)
       argv[i]=args[i].c_str();
 
-    return parse(argc, &argv[0], clear);
+    return parse(argc, &argv[0], errors, clear);
   }
 
   bool parse(std::istream &is, bool clear=true){
+    return parse(is, errors, clear);
+  }
+
+  bool parse(std::istream &is, std::vector<std::string> &errors,
+             bool clear=true){
     std::vector<std::string> args;
     args.push_back(prog_name);
     std::string arg;
@@ -500,10 +510,15 @@ public:
         args.push_back(arg);
       }
     }
-    return parse(args, clear);
+    return parse(args, errors, clear);
   }
 
   bool parse(int argc, const char * const argv[], bool clear=true){
+    return parse(argc, argv, errors, clear);
+  }
+
+  bool parse(int argc, const char * const argv[],
+             std::vector<std::string> &errors, bool clear=true){
     if (clear){
       errors.clear();
       others.clear();
@@ -537,7 +552,7 @@ public:
         if (p){
           std::string name(argv[i]+2, p);
           std::string val(p+1);
-          set_option(name, val);
+          set_option(name, val, errors);
         }
         else{
           std::string name(argv[i]+2);
@@ -552,11 +567,11 @@ public:
             }
             else{
               i++;
-              set_option(name, argv[i]);
+              set_option(name, argv[i], errors);
             }
           }
           else{
-            set_option(name);
+            set_option(name, errors);
           }
         }
       }
@@ -573,7 +588,7 @@ public:
             errors.push_back(std::string("ambiguous short option: -")+argv[i][j-1]);
             continue;
           }
-          set_option(lookup[argv[i][j-1]]);
+          set_option(lookup[argv[i][j-1]], errors);
         }
 
         if (lookup.count(last)==0){
@@ -586,11 +601,11 @@ public:
         }
 
         if (i+1<argc && options[lookup[last]]->has_value()){
-          set_option(lookup[last], argv[i+1]);
+          set_option(lookup[last], argv[i+1], errors);
           i++;
         }
         else{
-          set_option(lookup[last]);
+          set_option(lookup[last], errors);
         }
       }
       else{
@@ -730,7 +745,7 @@ private:
       throw cmdline::exception(errors, usage(), name, help);
   }
 
-  void set_option(const std::string &name){
+  void set_option(const std::string &name, std::vector<std::string> &errors){
     if (options.count(name)==0){
       errors.push_back("undefined option: --"+name);
       return;
@@ -741,7 +756,8 @@ private:
     }
   }
 
-  void set_option(const std::string &name, const std::string &value){
+  void set_option(const std::string &name, const std::string &value,
+                  std::vector<std::string> &errors){
     if (options.count(name)==0){
       errors.push_back("undefined option: --"+name);
       return;
