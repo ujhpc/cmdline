@@ -804,7 +804,8 @@ private:
     }
 
     bool dontsave(bool flag) const{
-      return (flags&(~cmdline::dontsave)) | (flag?cmdline::dontsave:0);
+      return (flags&(~(cmdline::dontsave|cmdline::alwayssave))) |
+                    (flag?cmdline::dontsave:cmdline::alwayssave);
     }
 
   protected:
