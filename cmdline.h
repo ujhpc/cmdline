@@ -371,7 +371,7 @@ public:
   void add(const std::string &name,
            char short_name=0,
            const std::string &desc="",
-           cmdline::flags flags=optional|dontsave){
+           cmdline::flags flags=optional|cmdline::dontsave){
     if (options.count(name)) throw parse_error("multiple definition: "+name);
     options[name]=new option_without_value(name, short_name, desc, flags);
     ordered.push_back(options[name]);
@@ -417,6 +417,11 @@ public:
   int count(const std::string &name) const {
     if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
     return options.find(name)->second->count();
+  }
+
+  bool dontsave(const std::string &name, bool dontsave=true) const {
+    if (options.count(name)==0) throw parse_error("there is no flag: --"+name);
+    return options.find(name)->second->dontsave(dontsave);
   }
 
   template <class T>
@@ -794,6 +799,14 @@ private:
       return flags&cmdline::hidden;
     }
 
+    bool dontsave() const{
+      return flags&cmdline::dontsave;
+    }
+
+    bool dontsave(bool flag) const{
+      return (flags&(~cmdline::dontsave)) | (flag?cmdline::dontsave:0);
+    }
+
   protected:
     cmdline::flags flags;
   };
@@ -852,7 +865,7 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (!(flags&dontsave) && cnt)
+      if (!(flags&cmdline::dontsave) && cnt)
         os<<"--"<<nam<<std::endl;
       return os;
     }
@@ -939,7 +952,8 @@ private:
     }
 
     std::ostream & operator>>(std::ostream& os) const{
-      if (!(flags&dontsave) && (!!(flags&alwayssave) || has || actual!=def))
+      if (!(flags&cmdline::dontsave) &&
+          (!!(flags&alwayssave) || has || actual!=def))
         os<<"--"<<nam<<"="<<actual<<std::endl;
       return os;
     }
