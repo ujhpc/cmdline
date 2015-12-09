@@ -770,6 +770,7 @@ private:
 
   class option_base{
   public:
+    option_base(cmdline::flags flags) :flags(flags){}
     virtual ~option_base(){}
 
     virtual bool has_value() const=0;
@@ -778,14 +779,23 @@ private:
     virtual bool has_set() const=0;
     virtual int count() const=0;
     virtual bool valid() const=0;
-    virtual bool must() const=0;
-    virtual bool hidden() const=0;
 
     virtual const std::string &name() const=0;
     virtual char short_name() const=0;
     virtual const std::string &description() const=0;
     virtual std::string short_description() const=0;
     virtual std::ostream & operator>>(std::ostream& os) const=0;
+
+    bool must() const{
+      return flags&required;
+    }
+
+    bool hidden() const{
+      return flags&cmdline::hidden;
+    }
+
+  protected:
+    cmdline::flags flags;
   };
 
   class option_without_value : public option_base {
@@ -794,7 +804,7 @@ private:
                          char short_name,
                          const std::string &desc,
                          cmdline::flags flags)
-      :nam(name), snam(short_name), desc(desc), cnt(0), flags(flags){
+      :option_base(flags), nam(name), snam(short_name), desc(desc), cnt(0){
     }
     ~option_without_value(){}
 
@@ -825,10 +835,6 @@ private:
       return false;
     }
 
-    bool hidden() const{
-      return flags&cmdline::hidden;
-    }
-
     const std::string &name() const{
       return nam;
     }
@@ -856,7 +862,6 @@ private:
     char snam;
     std::string desc;
     int cnt;
-    cmdline::flags flags;
   };
 
   template <class T>
@@ -869,7 +874,7 @@ private:
                       const std::string &desc,
                       cmdline::parser &parser,
                       typename cmdline::hook<T>::type hook)
-      : nam(name), snam(short_name), flags(flags), has(false)
+      :option_base(flags), nam(name), snam(short_name), has(false)
       , def(def), actual(def), parser(parser), hook(hook){
       this->desc=full_description(desc);
     }
@@ -917,14 +922,6 @@ private:
       return true;
     }
 
-    bool must() const{
-      return flags&required;
-    }
-
-    bool hidden() const{
-      return flags&cmdline::hidden;
-    }
-
     const std::string &name() const{
       return nam;
     }
@@ -959,7 +956,6 @@ private:
 
     std::string nam;
     char snam;
-    cmdline::flags flags;
     std::string desc;
 
     bool has;
