@@ -955,7 +955,7 @@ private:
     std::ostream & operator>>(std::ostream& os) const{
       if (!(flags&cmdline::dontsave) &&
           (!!(flags&alwayssave) || has || actual!=def))
-        os<<"--"<<nam<<"="<<actual<<std::endl;
+        os<<"--"<<nam<<"="<<detail::lexical_cast<std::string>(actual)<<std::endl;
       return os;
     }
 
